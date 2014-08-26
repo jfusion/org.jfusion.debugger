@@ -10,6 +10,8 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU/GPL
  * @link      http://www.jfusion.org
  */
+use Joomla\Event\Dispatcher;
+use Joomla\Event\Event;
 use Psr\Log\LogLevel;
 
 /**
@@ -24,8 +26,14 @@ use Psr\Log\LogLevel;
  */
 class Debugger {
 	private $data = array();
+	private $stack = array();
 	private $title = '';
-	private $callback = null;
+	private $type = null;
+
+	/**
+	 * @var Dispatcher $dispatcher
+	 */
+	private $dispatcher = null;
 
 	/**
 	 * Debugger instances container.
@@ -33,6 +41,14 @@ class Debugger {
 	 * @var    Debugger
 	 */
 	protected static $instance = array();
+
+	/**
+	 *
+	 */
+	function __construct()
+	{
+		$this->dispatcher = new Dispatcher();
+	}
 
 	/**
 	 * Returns the global Session object, only creating it
@@ -48,6 +64,30 @@ class Debugger {
 			self::$instance[$key] = new Debugger();
 		}
 		return self::$instance[$key];
+	}
+
+	/**
+	 * @return  Dispatcher
+	 */
+	public function &getDispatcher()
+	{
+		return $this->dispatcher;
+	}
+
+	/**
+	 * @return string
+	 */
+	public function getType()
+	{
+		return $this->type;
+	}
+
+	/**
+	 * @param $type
+	 */
+	public function setType($type)
+	{
+		$this->type = $type;
 	}
 
 	/**
@@ -179,14 +219,18 @@ class Debugger {
 				foreach ($arr as $key => $value) {
 					$empty = false;
 					$temp = $style;
-					if ($this->callback) {
-						list($target, $function, $args) = $this->callback;
-						if ($style === null) {
-							list($style, $value) = $target->$function($key, $value, $args);
-						} else {
-							list(, $value) = $target->$function($key, $value, $args);
-						}
-					}
+
+					$event = new Event('onDebuggerFilter');
+					$event->setArgument('type', $this->type);
+					$event->setArgument('stack', $this->stack);
+					$event->setArgument('key', $key);
+					$event->setArgument('value', $value);
+
+					$this->dispatcher->triggerEvent($event);
+
+					$key = $event->getArgument('key');
+					$value = $event->getArgument('value');
+					$style = $event->getArgument('style');
 
 					$key = $this->decorateValue($key);
 					$value = $this->decorateValue($value);
@@ -221,17 +265,24 @@ HTML;
 				foreach ($arr as $key => $value) {
 					$temp = $style;
 					$empty = false;
-					if ($this->callback) {
-						list($target, $function, $args) = $this->callback;
-						if ($style === null) {
-							list($style, $value) = $target->$function($key, $value, $args);
-						} else {
-							list(, $value) = $target->$function($key, $value, $args);
-						}
-					}
+
+					$event = new Event('onDebuggerFilter');
+					$event->setArgument('type', $this->type);
+					$event->setArgument('stack', $this->stack);
+					$event->setArgument('key', $key);
+					$event->setArgument('value', $value);
+
+					$this->dispatcher->triggerEvent($event);
+
+					$key = $event->getArgument('key');
+					$value = $event->getArgument('value');
+					$style = $event->getArgument('style');
 
 					$key = $this->decorateValue($key);
+					array_push($this->stack, $key);
 					$value = $this->getHtml($value, false, $style);
+					array_pop($this->stack);
+
 					$body .=<<<HTML
 					<tr>
 						<td class="{$keyClass}" style="{$style}">{$key}</td>
@@ -315,10 +366,18 @@ HTML;
 			if ($this->isOneDimensional($arr)) {
 				foreach ($arr as $key => $value) {
 					$empty = false;
-					if ($this->callback) {
-						list($target, $function, $args) = $this->callback;
-						list(, $value) = $target->$function($key, $value, $args);
-					}
+
+					$event = new Event('onDebuggerFilter');
+					$event->setArgument('type', $this->type);
+					$event->setArgument('stack', $this->stack);
+					$event->setArgument('key', $key);
+					$event->setArgument('value', $value);
+
+					$this->dispatcher->triggerEvent($event);
+
+					$key = $event->getArgument('key');
+					$value = $event->getArgument('value');
+
 					$lines[] = $levelText . $key . ' &rarr; ' . $this->decorateValue($value, false);
 				}
 				if ($empty) {
@@ -331,16 +390,27 @@ HTML;
 					if (is_object($value)) {
 						$emptyWhat = 'empty-object';
 					}
-					if ($this->callback) {
-						list($target, $function, $args) = $this->callback;
-						list(, $value) = $target->$function($key, $value, $args);
-					}
+
+					$event = new Event('onDebuggerFilter');
+					$event->setArgument('type', $this->type);
+					$event->setArgument('stack', $this->stack);
+					$event->setArgument('key', $key);
+					$event->setArgument('value', $value);
+
+					$this->dispatcher->triggerEvent($event);
+
+					$key = $event->getArgument('key');
+					$value = $event->getArgument('value');
+
 					if ( is_array($value) || is_object($value) ) {
 						if (count($value) == 0) {
 							$lines[] = $emptyWhat;
 						}
 						$lines[] = $levelText . $key . ' - &darr;';
+
+						array_push($this->stack, $key);
 						$lines[] = $this->getText($value, null, $level+1);
+						array_pop($this->stack);
 					} else {
 						$lines[] = $levelText . $key . ' &rarr; ' . $this->decorateValue($value, false);
 					}
@@ -457,13 +527,5 @@ HTML;
 			}
 		}
 		return $decValue;
-	}
-
-
-	/**
-	 * @param $callback
-	 */
-	public function setCallback($callback) {
-		$this->callback = $callback;
 	}
 }
