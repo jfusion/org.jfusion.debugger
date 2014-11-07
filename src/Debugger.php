@@ -10,9 +10,11 @@
  * @license   http://www.gnu.org/copyleft/gpl.html GNU/GPL
  * @link      http://www.jfusion.org
  */
+use InvalidArgumentException;
 use Joomla\Event\Dispatcher;
 use Joomla\Event\Event;
 use Psr\Log\LogLevel;
+use RuntimeException;
 
 /**
  * Main debugging class which is used for detailed outputs
@@ -92,6 +94,7 @@ class Debugger {
 
 	/**
 	 * @param string $key
+	 *
 	 * @param $value
 	 */
 	public function add($key, $value) {
@@ -132,7 +135,9 @@ class Debugger {
 	public function get($key = null) {
 		if ($key === null) {
 			return $this->data;
-		} else if (isset($this->data[$key])) {
+		} else if (is_object($this->data) && isset($this->data->{$key})) {
+			return $this->data->{$key};
+		} elseif (is_array($this->data) && isset($this->data[$key])) {
 			return $this->data[$key];
 		}
 		return null;
@@ -145,7 +150,9 @@ class Debugger {
 	public function set($key, $value) {
 		if ($key === null) {
 			$this->data = $value;
-		} else {
+		} elseif (is_object($this->data)) {
+			$this->data->{$key} = $value;
+		} elseif (is_array($this->data)) {
 			$this->data[$key] = $value;
 		}
 	}
@@ -158,7 +165,9 @@ class Debugger {
 	public function isEmpty($key = null) {
 		$result = true;
 		if ($key !== null) {
-			if (isset($this->data[$key])) {
+			if (is_object($this->data) && isset($this->data->{$key})) {
+				$result = empty($this->data->{$key});
+			} elseif (is_array($this->data) && isset($this->data[$key])) {
 				$result = empty($this->data[$key]);
 			} else {
 				$result = true;
@@ -171,9 +180,17 @@ class Debugger {
 
 	/**
 	 * @param array $debugger
+	 *
+	 * @throws RuntimeException
 	 */
 	public function merge($debugger) {
-		$this->data = array_merge_recursive($this->data, $debugger);
+		if (!is_array($this->data)) {
+			throw new RuntimeException('Data is not an array');
+		} else if (!is_array($debugger)) {
+			throw new InvalidArgumentException('Argument is not an array');
+		} else {
+			$this->data = array_merge_recursive($this->data, $debugger);
+		}
 	}
 
 	/**
@@ -467,7 +484,13 @@ HTML;
 		if ($key === null) {
 			$data = $this->data;
 		} else {
-			$data = $this->data[$key];
+			if (is_object($this->data) && isset($this->data->{$key})) {
+				$data = $this->data->{$key};
+			} elseif (is_array($this->data) && isset($this->data[$key])) {
+				$data = $this->data[$key];
+			} else {
+				$data = null;
+			}
 		}
 
 		$html =<<<HTML
@@ -489,7 +512,13 @@ HTML;
 		if ($key === null) {
 			$data = $this->data;
 		} else {
-			$data = $this->data[$key];
+			if (is_object($this->data) && isset($this->data->{$key})) {
+				$data = $this->data->{$key};
+			} elseif (is_array($this->data) && isset($this->data[$key])) {
+				$data = $this->data[$key];
+			} else {
+				$data = null;
+			}
 		}
 
 		return $this->getText($data, $this->title);
